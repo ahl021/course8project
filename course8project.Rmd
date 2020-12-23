@@ -1,0 +1,138 @@
+---
+title: "Practical Machine Learning: Prediction on How Well People Perform Barbell Lifts"
+author: "HL"
+date: "12/23/2020"
+output: html_document
+---
+
+```{r setup, echo=FALSE, include=FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+packages = c("data.table", "tidyverse", "caret", "rpart", "randomForest",  "gbm", "rattle")
+
+package.check <- lapply(
+    packages,
+    FUN = function(x) {
+        if (!require(x, character.only = TRUE)) {
+            install.packages(x, dependencies = TRUE, 
+                             repos = "http://cran.us.r-project.org")
+            library(x, character.only = TRUE)
+        }
+    }
+)
+
+```
+
+## Synopsis
+Three machine learning models have been trained in predicting which way people perform barbell lifts correctly or incorrectly in 5 different ways. Based on the existing data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, recursive partitioning classification, gradient boosting and random forest algorithms are used with cross validation. The random forest model gives the best accuracy in prediction.
+
+## Introduction
+
+By using devices such as Jawbone Up, Nike FuelBand, and Fitbit, it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+This project' goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants for predicting how well people do barbell lifts correctly or incorrectly in 5 different ways. People regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+## Data import and manipulation
+
+The training data for this project are available here:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+The data for this project come from this source: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har>.
+
+Based on the [WLE dataset](http://web.archive.org/web/20161224072740/http://groupware.les.inf.puc-rio.br/static/WLE/WearableComputing_weight_lifting_exercises_biceps_curl_variations.csv), only 53 variables are used for training models and 52 for predicting test data. The observations with any missing value are omitted.
+
+```{r data operations, echo=TRUE, include=FALSE, message = FALSE, warning = FALSE}
+# import data from source
+rawDataTrain <- fread("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+rawDataToPred <- fread("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+# select variables as needed
+dataTrain <- rawDataTrain %>% select(8:11,37:49,60:68,84:86,102,113:124,140,151:160)
+dataToPred <- rawDataToPred %>% select(8:11,37:49,60:68,84:86,102,113:124,140,151:159)
+
+# remove observations with missing values and convert data type 
+dataTrain <- na.omit(dataTrain)
+dataToPred <- na.omit(dataToPred)
+dataTrain$classe <- as.factor(dataTrain$classe)
+
+```
+
+## Build three machine learning models
+
+Original train dataset is split to two datasets for training and testing.
+
+```{r split, echo=TRUE, include=FALSE, message = FALSE, warning = FALSE}
+# set up training and testing datasets
+set.seed(10)
+indexes = createDataPartition(dataTrain$classe, p = .8, list = F)
+trainData = dataTrain[indexes, ]
+testData = dataTrain[-indexes, ]
+
+```
+
+The target of prediction is a categorical variable "classe" with value A, B, C, D, or E. The number of predicators is fifty two. Therefore, supervised learning classification method is appropriate for constructing the model. In this project, recursive partitioning classification, gradient boosting and random forest algorithms are selected. 
+
+Three fold cross validation is used in training all three models.
+
+```{r build, echo=TRUE, message = FALSE, warning = FALSE}
+# train recursive partitioning model
+fitRP = rpart(classe ~ ., data = trainData, method = "class", control = rpart.control(cp = 0.0001), xval=3)
+fancyRpartPlot(fitRP, sub="Recursive Partitioning Tree")
+
+# train gradient boosting model
+trainCtrl = caret::trainControl(method = "cv", number=3)
+fitGBM = caret::train(classe ~ ., data = trainData, trControl = trainCtrl, method = "gbm", verbose = FALSE)
+plot(fitGBM)
+
+# train random forest model
+trainCtrl = caret::trainControl(method = "cv", number=3)
+fitRF = caret::train(classe ~ ., data = trainData, trControl = trainCtrl, method = "rf", verbose = FALSE)
+plot(fitRF)
+
+```
+
+
+## Evaluate three machine learning models
+
+Confusion matrix of test data is used for evaluating these three models. Other evaluation methods are not addressed here although data can be collected for evaluation.
+
+```{r validate, echo=TRUE, message = FALSE, warning = FALSE}
+# validate recursive partitioning model
+pred = predict(fitRP, testData, type = "class")
+confusionMatrix(testData$classe, pred)
+
+# validate gradient boosting model
+pred = predict(fitGBM, testData)
+confusionMatrix(testData$classe, pred)
+
+# validate random forest model
+pred = predict(fitRF, testData)
+confusionMatrix(testData$classe, pred)
+
+```
+
+The accuracy of three models are all greater than 0.9. Under current conditions, the random forest model has the best accuracy greater than 0.99.
+
+The random forest model gives the prediction from the raw test data.
+
+```{r final, echo=TRUE, message = FALSE, warning = FALSE}
+pred = predict(fitRF, newdata=dataToPred)
+pred
+```
+
+## Conclusion
+
+Three machine learning models, recursive partitioning classification, gradient boosting and random forest, have been trained with existing data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. Three fold cross validation is used in all three models. The random forest model gives the best accuracy in prediction.  
+
+By using the random forest model, the classe values of raw test cases is predicted as follows:
+```{r end, echo=FALSE, message = FALSE, warning = FALSE}
+pred = predict(fitRF, newdata=dataToPred)
+pred
+```
+
+## Reference
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.  
